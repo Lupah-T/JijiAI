@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JijiGreen AI | Waste Intelligence</title>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: Arial, sans-serif;
+    background: #f1f7f4;
+    color: #19352d;
+}
+
+header {
+    background: #0c674b;
+    color: white;
+    padding: 25px 7%;
+}
+
+header h1 { margin: 0; }
+header p { margin-bottom: 0; opacity: .9; }
+
+main {
+    max-width: 1000px;
+    margin: 35px auto;
+    padding: 0 20px;
+}
+
+.panel {
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 5px 20px #183d2b12;
+    margin-bottom: 22px;
+}
+
+.upload-area {
+    border: 2px dashed #8ab9a5;
+    padding: 30px;
+    text-align: center;
+    border-radius: 12px;
+}
+
+input { margin: 12px 0; }
+
+button {
+    background: #0c674b;
+    color: white;
+    border: 0;
+    padding: 13px 25px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 15px;
+    font-weight: bold;
+}
+
+button:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+}
+
+#preview {
+    display: none;
+    max-width: 100%;
+    max-height: 300px;
+    margin: 20px auto 0;
+    border-radius: 10px;
+}
+
+.results {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 15px;
+}
+
+.result-card {
+    background: #f3f8f5;
+    padding: 18px;
+    border-radius: 10px;
+}
+
+.result-card h3 { margin-top: 0; }
+
+.big {
+    font-size: 25px;
+    font-weight: bold;
+    color: #08734e;
+}
+
+.muted { color: #64766e; font-size: 13px; }
+
+.warning {
+    background: #fff5df;
+    color: #795415;
+    padding: 13px;
+    border-radius: 8px;
+    margin-top: 15px;
+}
+
+#error {
+    color: #b42318;
+    margin-top: 12px;
+}
+
+#results { display: none; }
+
+footer {
+    text-align: center;
+    padding: 25px;
+    color: #718078;
+    font-size: 13px;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+    <h1>JijiGreen AI</h1>
+    <p>Turning Trash into Treasure</p>
+    <p>AI-powered waste material classification and experimental brand recognition</p>
+</header>
+
+<main>
+
+<section class="panel">
+    <h2>Waste Intelligence Scanner</h2>
+    <p>Upload an image of a recyclable or waste item for AI analysis.</p>
+
+    <div class="upload-area">
+        <input type="file" id="file" accept="image/jpeg,image/png">
+        <br>
+        <img id="preview" alt="Selected waste item preview">
+        <br>
+
+        <label>
+            <input type="checkbox" id="isBottle">
+            This item is a bottle (also run experimental brand recognition)
+        </label>
+
+        <br><br>
+        <button id="analyze">Analyze Waste Item</button>
+        <p class="muted">JPG or PNG, maximum 5 MB</p>
+        <p id="error"></p>
+    </div>
+</section>
+
+<section class="panel" id="results">
+    <h2>AI Analysis Results</h2>
+
+    <div class="results">
+        <div class="result-card">
+            <h3>Material Classification</h3>
+            <div class="big" id="material">-</div>
+            <p id="materialConfidence"></p>
+            <div id="materialProbabilities"></div>
+        </div>
+
+        <div class="result-card">
+            <h3>Brand Recognition</h3>
+            <div class="big" id="brand">-</div>
+            <p id="brandConfidence"></p>
+            <div id="brandProbabilities"></div>
+            <p class="muted" id="brandStatus"></p>
+        </div>
+    </div>
+
+    <div class="warning" id="notice">
+        AI predictions require verification before waste acceptance.
+    </div>
+</section>
+
+<section class="panel">
+    <h3>About this prototype</h3>
+    <p>
+        The material classifier uses MobileNetV2 and recognizes six
+        waste categories: cardboard, glass, metal, paper, plastic and trash.
+    </p>
+    <p>
+        Brand recognition is an experimental model currently limited
+        to Coca-Cola family products and Predator bottles.
+    </p>
+    <p class="muted">
+        Predictions are decision-support results, not final verification
+        of material composition, brand identity or environmental impact.
+    </p>
+</section>
+
+</main>
+
+<footer>
+    JijiGreen | Community-Powered Recycling & Environmental Engagement
+</footer>
+
+<script>
+const fileInput = document.getElementById("file");
+const preview = document.getElementById("preview");
+const button = document.getElementById("analyze");
+const errorBox = document.getElementById("error");
+const results = document.getElementById("results");
+
+fileInput.addEventListener("change", () => {
+    const file = fileInput.files[0];
+
+    errorBox.textContent = "";
+    results.style.display = "none";
+
+    if (!file) {
+        preview.style.display = "none";
+        return;
+    }
+
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+        errorBox.textContent = "Please select a JPG or PNG image.";
+        fileInput.value = "";
+        preview.style.display = "none";
+        return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+        errorBox.textContent = "Image must be smaller than 5 MB.";
+        fileInput.value = "";
+        preview.style.display = "none";
+        return;
+    }
+
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = "block";
+});
+
+function showProbabilities(elementId, probabilities) {
+    const element = document.getElementById(elementId);
+    element.replaceChildren();
+
+    for (const [name, score] of Object.entries(probabilities)) {
+        const line = document.createElement("p");
+        line.textContent = `${name}: ${(score * 100).toFixed(2)}%`;
+        element.appendChild(line);
+    }
+}
+
+button.addEventListener("click", async () => {
+    const file = fileInput.files[0];
+
+    errorBox.textContent = "";
+
+    if (!file) {
+        errorBox.textContent = "Select an image first.";
+        return;
+    }
+
+    const form = new FormData();
+    form.append("file", file);
+    form.append(
+        "is_bottle",
+        document.getElementById("isBottle").checked
+    );
+
+    button.disabled = true;
+    button.textContent = "Analyzing...";
+    results.style.display = "none";
+
+    try {
+        const response = await fetch("/predict", {
+            method: "POST",
+            body: form
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.detail || "Prediction failed.");
+        }
+
+        document.getElementById("material").textContent =
+            data.material.predicted_material;
+
+        document.getElementById("materialConfidence").textContent =
+            `Confidence: ${data.material.confidence_percent}%`;
+
+        showProbabilities(
+            "materialProbabilities",
+            data.material.probabilities
+        );
+
+        const brandInfo = data.brand_recognition;
+
+        if (brandInfo.result) {
+            document.getElementById("brand").textContent =
+                brandInfo.result.predicted_brand;
+
+            document.getElementById("brandConfidence").textContent =
+                `Confidence: ${brandInfo.result.confidence_percent}%`;
+
+            showProbabilities(
+                "brandProbabilities",
+                brandInfo.result.probabilities
+            );
+
+            document.getElementById("brandStatus").textContent =
+                "Experimental result — manual verification required.";
+        } else {
+            document.getElementById("brand").textContent =
+                "Not analyzed";
+
+            document.getElementById("brandConfidence").textContent = "";
+            document.getElementById("brandProbabilities").replaceChildren();
+
+            document.getElementById("brandStatus").textContent =
+                "Brand recognition skipped because the item was not confirmed as a bottle.";
+        }
+
+        results.style.display = "block";
+
+    } catch (error) {
+        errorBox.textContent = error.message;
+    } finally {
+        button.disabled = false;
+        button.textContent = "Analyze Waste Item";
+    }
+});
+</script>
+
+</body>
+</html>
