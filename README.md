@@ -54,3 +54,37 @@ python -m unittest tests.test_collection_recommender -v
 - Brand recognition remains experimental and human verification is required.
 - Collection recommendations use the existing dataset and priority order from `api/collection_recommender.py`.
 - Demo data is stored locally in the browser and is clearly labeled as demo-only.
+
+## Render deployment
+
+1. Push this repository to GitHub.
+2. In Render, create a **Web Service** from `Lupah-T/JijiAI`.
+3. Use:
+
+```text
+Branch: main
+Runtime: Python
+Build Command: pip install -r requirements.txt
+Start Command: python -m uvicorn api.brand_api:app --host 0.0.0.0 --port $PORT
+Health Check Path: /health
+```
+
+4. Add this environment variable, replacing the domain with the deployed JijiGreen Vercel domain:
+
+```dotenv
+ALLOWED_ORIGINS=https://your-jijigreen-domain.vercel.app
+```
+
+Multiple frontend domains can be comma-separated:
+
+```dotenv
+ALLOWED_ORIGINS=https://domain-one.vercel.app,https://domain-two.vercel.app
+```
+
+5. Deploy and verify:
+
+```bash
+curl https://your-jijiai-service.onrender.com/health
+```
+
+The response should report `material_model_loaded: true` and `brand_model_loaded: true`.

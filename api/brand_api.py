@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -40,13 +41,17 @@ app = FastAPI(
     version="2.0.0",
 )
 
+# Configure CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:4173",
+        origin.strip().rstrip("/")
+        for origin in (
+            os.getenv("ALLOWED_ORIGINS")
+            or os.getenv("CLIENT_URL")
+            or "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173"
+        ).split(",")
+        if origin.strip()
     ],
     allow_credentials=True,
     allow_methods=["*"],
