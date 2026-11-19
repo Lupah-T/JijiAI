@@ -1,31 +1,87 @@
 import { Routes, Route, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowRight,
+  Award,
   Camera,
   CheckCircle2,
   CircleAlert,
   ClipboardCheck,
   Factory,
+  Info,
   Leaf,
+  LocateFixed,
+  Map,
   MapPinned,
   RefreshCw,
   Recycle,
   ShieldCheck,
   Sparkles,
+  TreePine,
   Trash2,
   Upload,
   User,
   Users,
   Warehouse,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 import './App.css';
 import { fetchCollectionRecommendations } from './services/collectionService';
 import { fetchDIYRecommendations } from './services/reuseService';
-import { checkBackendHealth, predictCombined } from './services/predictionService';
+import { predictCombined } from './services/predictionService';
 
 const materialOptions = ['Plastic', 'Glass', 'Metal', 'Paper', 'Cardboard', 'Other'];
 const conditionOptions = ['clean', 'dry', 'mixed', 'contaminated'];
+const defaultLocation = { latitude: -1.286389, longitude: 36.817223 };
+const localStorageKey = 'jiji-demo-collections';
+
+const collectionPoints = [
+  {
+    id: 'campus-hub',
+    name: 'JijiGreen Campus Hub',
+    address: 'Main Campus, Nairobi',
+    latitude: -1.2866,
+    longitude: 36.8176,
+    materials: ['Plastic', 'Paper', 'Cardboard', 'Glass'],
+    status: 'Open today',
+    hours: '08:00–18:00',
+    phone: '+254 700 0001',
+  },
+  {
+    id: 'market-collection',
+    name: 'Market Recovery Point',
+    address: 'Kibera Market Square',
+    latitude: -1.2915,
+    longitude: 36.8212,
+    materials: ['Plastic', 'Metal', 'Cardboard'],
+    status: 'High demand',
+    hours: '07:00–17:30',
+    phone: '+254 700 0002',
+  },
+  {
+    id: 'community-center',
+    name: 'Green Community Center',
+    address: 'Westlands Community Hub',
+    latitude: -1.2798,
+    longitude: 36.8089,
+    materials: ['Plastic', 'Glass', 'Paper', 'Metal'],
+    status: 'Open today',
+    hours: '09:00–18:00',
+    phone: '+254 700 0003',
+  },
+  {
+    id: 'residence-point',
+    name: 'Jiji Residence Drop-off',
+    address: 'South B Residential Area',
+    latitude: -1.3004,
+    longitude: 36.8108,
+    materials: ['Plastic', 'Paper', 'Glass'],
+    status: 'Available',
+    hours: '08:00–20:00',
+    phone: '+254 700 0004',
+  },
+];
 
 const demoStats = [
   { label: 'Demo scans', value: '12', tone: 'green' },
@@ -78,7 +134,32 @@ const impactNotes = [
   'The app does not calculate real carbon or diversion totals from a single image classification result.',
 ];
 
-const localStorageKey = 'jiji-demo-collections';
+const educationCards = [
+  {
+    title: 'Greenhouse gases',
+    description: 'Methane, carbon dioxide and other gases are linked to waste handling and landfill behaviour. Better sorting can reduce avoidable emissions.',
+    fact: 'Waste prevention and recycling can reduce the need for virgin material extraction and processing.',
+    action: 'Separate clean recyclables from general waste and reduce mixed contamination.',
+  },
+  {
+    title: 'Plastic pollution',
+    description: 'Plastic can remain in the environment for many years depending on the material and conditions. Caring for plastic waste matters.',
+    fact: 'Recycling and reuse reduce demand for newly manufactured plastic and help protect local ecosystems.',
+    action: 'Rinse bottles and packaging before placing them in the correct recycling stream.',
+  },
+  {
+    title: 'Circular economy',
+    description: 'A circular economy keeps useful materials in use for longer and reduces waste sent to landfill or incineration.',
+    fact: 'Repair, reuse and recycling all reduce pressure on finite natural resources.',
+    action: 'Choose durable, repairable products and keep recyclable materials clean.',
+  },
+  {
+    title: 'Responsible separation',
+    description: 'Clear separation helps collectors and recyclers process material efficiently and safely.',
+    fact: 'Contaminated materials can be rejected or require additional handling, which reduces efficiency.',
+    action: 'Keep paper, cardboard, metal, glass and plastics in separate streams whenever possible.',
+  },
+];
 
 function formatPercent(value) {
   if (typeof value === 'number') return `${value.toFixed(2)}%`;
@@ -86,9 +167,36 @@ function formatPercent(value) {
   return '—';
 }
 
+function formatDistance(metres) {
+  if (!Number.isFinite(metres)) return '—';
+  if (metres < 1000) return `${Math.round(metres)} m`;
+  return `${(metres / 1000).toFixed(1)} km`;
+}
+
 function getImagePreview(file) {
   if (!file) return '';
   return URL.createObjectURL(file);
+}
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const toRadians = (degrees) => (degrees * Math.PI) / 180;
+  const earthRadiusKm = 6371;
+  const dLat = toRadians(lat2 - lat1);
+  const dLon = toRadians(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadiusKm * c * 1000;
+}
+
+function readDemoRecords() {
+  try {
+    return JSON.parse(localStorage.getItem(localStorageKey) || '[]');
+  } catch (error) {
+    return [];
+  }
 }
 
 function PortalLayout({ children, title, subtitle, isCollector = false }) {
@@ -136,7 +244,7 @@ function HomeScreen() {
           <p className="eyebrow">Waste intelligence demo</p>
           <h1>JijiAI — Intelligent Waste Assistant</h1>
           <p>
-            Explore a demonstration of material classification, collection guidance and responsible waste handling.
+            Explore a demonstration of material classification, live location discovery, and responsible waste handling.
           </p>
           <div className="portal-select">
             <button className="portal-button primary" onClick={() => navigate('/user')}>
@@ -158,8 +266,8 @@ function HomeScreen() {
           <div className="mini-stat">
             <MapPinned size={18} />
             <div>
-              <strong>Facility guidance</strong>
-              <span>Verified and unverified facility logic</span>
+              <strong>Live map</strong>
+              <span>Nearest collection point discovery</span>
             </div>
           </div>
           <div className="mini-stat">
@@ -175,11 +283,122 @@ function HomeScreen() {
   );
 }
 
+function DemoMapPanel({ userLocation, selectedMaterial }) {
+  const mapRef = useRef(null);
+  const points = useMemo(() => {
+    const withDistance = collectionPoints.map((point) => ({
+      ...point,
+      distanceMetres: haversineKm(
+        userLocation.latitude,
+        userLocation.longitude,
+        point.latitude,
+        point.longitude,
+      ),
+    }));
+
+    const materialMatches = withDistance.filter((point) =>
+      point.materials.includes(selectedMaterial),
+    );
+
+    return (materialMatches.length ? materialMatches : withDistance).sort(
+      (a, b) => a.distanceMetres - b.distanceMetres,
+    );
+  }, [selectedMaterial, userLocation]);
+
+  const nearestPoint = points[0];
+
+  useEffect(() => {
+    if (!mapRef.current) return undefined;
+
+    const map = L.map(mapRef.current, { zoomControl: true }).setView(
+      [userLocation.latitude, userLocation.longitude],
+      13,
+    );
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 19,
+    }).addTo(map);
+
+    const userPin = L.circleMarker([userLocation.latitude, userLocation.longitude], {
+      radius: 11,
+      color: '#1d7f57',
+      weight: 3,
+      fillColor: '#9ae6b4',
+      fillOpacity: 1,
+    }).addTo(map);
+    userPin.bindPopup(`<strong>Your location</strong><br/>${userLocation.latitude.toFixed(5)}, ${userLocation.longitude.toFixed(5)}`);
+
+    const pointIcon = (title) => L.divIcon({
+      html: `<div class="map-point-pin"><span>${title}</span></div>`,
+      className: 'map-point-wrapper',
+      iconSize: [30, 30],
+      iconAnchor: [15, 30],
+      popupAnchor: [0, -25],
+    });
+
+    const pointMarkers = points.slice(0, 6).map((point) => {
+      const marker = L.marker([point.latitude, point.longitude], {
+        icon: pointIcon(point.name.charAt(0)),
+      }).addTo(map);
+      marker.bindPopup(`
+        <strong>${point.name}</strong><br/>
+        ${point.address}<br/>
+        Materials: ${point.materials.join(', ')}<br/>
+        Status: ${point.status}<br/>
+        Distance: ${formatDistance(point.distanceMetres)}<br/>
+        ${point.phone}`);
+      return marker;
+    });
+
+    if (nearestPoint) {
+      const nearestBounds = L.latLngBounds(
+        [userLocation.latitude, userLocation.longitude],
+        [nearestPoint.latitude, nearestPoint.longitude],
+      );
+      map.fitBounds(nearestBounds.pad(0.25), { animate: true });
+    }
+
+    return () => {
+      map.remove();
+      pointMarkers.forEach((marker) => marker.remove());
+      userPin.remove();
+    };
+  }, [nearestPoint, points, userLocation]);
+
+  return (
+    <div className="map-block">
+      <div className="map-toolbar">
+        <div className="map-legend">
+          <span><i className="legend-user" /> Your location</span>
+          <span><i className="legend-point" /> Collection point</span>
+        </div>
+        <div className="map-status">{nearestPoint ? `Nearest suitable point: ${nearestPoint.name} • ${formatDistance(nearestPoint.distanceMetres)}` : 'No suitable point found for this material'}</div>
+      </div>
+      <div ref={mapRef} className="demo-map" />
+      <div className="map-detail-grid">
+        <div className="map-detail-card">
+          <strong>Your live/demo coordinates</strong>
+          <span>{userLocation.latitude.toFixed(5)}, {userLocation.longitude.toFixed(5)}</span>
+        </div>
+        <div className="map-detail-card">
+          <strong>Nearest suitable point</strong>
+          <span>{nearestPoint ? `${nearestPoint.name} — ${formatDistance(nearestPoint.distanceMetres)} away` : 'No available match'}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UserPortal() {
   const [selectedMaterial, setSelectedMaterial] = useState('Plastic');
   const [selectedCondition, setSelectedCondition] = useState('clean');
   const [quantity, setQuantity] = useState(5);
-  const [coords, setCoords] = useState({ latitude: -1.286389, longitude: 36.817223 });
+  const [locationState, setLocationState] = useState({
+    status: 'demo',
+    position: defaultLocation,
+    error: '',
+  });
   const [facilityResults, setFacilityResults] = useState([]);
   const [facilityStatus, setFacilityStatus] = useState('idle');
   const [serviceError, setServiceError] = useState('');
@@ -191,12 +410,63 @@ function UserPortal() {
     result: null,
     error: '',
   });
+  const [dashboardRecords, setDashboardRecords] = useState(() => readDemoRecords());
+
+  useEffect(() => {
+    const refresh = () => setDashboardRecords(readDemoRecords());
+    window.addEventListener('jiji-data-refresh', refresh);
+    return () => window.removeEventListener('jiji-data-refresh', refresh);
+  }, []);
 
   useEffect(() => {
     return () => {
       if (scanner.preview) URL.revokeObjectURL(scanner.preview);
     };
   }, [scanner.preview]);
+
+  const mapPoints = useMemo(() => {
+    return collectionPoints
+      .map((point) => ({
+        ...point,
+        distanceMetres: haversineKm(
+          locationState.position.latitude,
+          locationState.position.longitude,
+          point.latitude,
+          point.longitude,
+        ),
+      }))
+      .filter((point) => point.materials.includes(selectedMaterial))
+      .sort((a, b) => a.distanceMetres - b.distanceMetres);
+  }, [locationState.position, selectedMaterial]);
+
+  const nearestCollectionPoint = mapPoints[0];
+
+  const dashboardMetrics = useMemo(() => {
+    const verifiedRecords = dashboardRecords.filter((record) => record.verificationDecision === 'accepted');
+    const totalSubmissions = dashboardRecords.length;
+    const totalVerifiedWeight = verifiedRecords.reduce((sum, record) => sum + Number(record.weightKg || 0), 0);
+    const totalEcoPoints = verifiedRecords.reduce((sum, record) => sum + Math.max(10, Math.round((Number(record.weightKg || 0) * 15))), 0);
+    const co2Avoided = Number((totalVerifiedWeight * 0.9).toFixed(2));
+    const materialBreakdown = verifiedRecords.reduce((acc, record) => {
+      const key = record.confirmedMaterial || record.predictedMaterial || 'Unassigned';
+      acc[key] = (acc[key] || 0) + Number(record.weightKg || 0);
+      return acc;
+    }, {});
+    const achievements = [];
+    if (verifiedRecords.length >= 1) achievements.push('First Recycler');
+    if (totalVerifiedWeight >= 5) achievements.push('Waste Warrior');
+    if (co2Avoided >= 5) achievements.push('Carbon Saver');
+    if (totalEcoPoints >= 100) achievements.push('Green Champion');
+
+    return {
+      totalSubmissions,
+      totalVerifiedWeight,
+      totalEcoPoints,
+      co2Avoided,
+      materialBreakdown,
+      achievements,
+    };
+  }, [dashboardRecords]);
 
   const handleScanChange = (event) => {
     const file = event.target.files?.[0];
@@ -239,18 +509,28 @@ function UserPortal() {
 
   const handleLocationRequest = () => {
     if (!navigator.geolocation) {
-      setServiceError('Geolocation is unavailable in this browser. You can enter coordinates manually.');
+      setLocationState({ status: 'demo', position: defaultLocation, error: 'Geolocation is unavailable in this browser. Demo coordinates are being used.' });
       return;
     }
+
+    setLocationState((current) => ({ ...current, status: 'loading', error: '' }));
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        setCoords({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
+        setLocationState({
+          status: 'live',
+          position: {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          },
+          error: '',
         });
       },
       () => {
-        setServiceError('Location permission was denied. Coordinates can still be entered manually.');
+        setLocationState({
+          status: 'demo',
+          position: defaultLocation,
+          error: 'Location permission was denied. Demo coordinates are being used for the map view.',
+        });
       },
       { enableHighAccuracy: true, timeout: 15000 },
     );
@@ -264,8 +544,8 @@ function UserPortal() {
         material: selectedMaterial.toLowerCase(),
         condition: selectedCondition,
         quantity_kg: Number(quantity),
-        latitude: coords.latitude,
-        longitude: coords.longitude,
+        latitude: locationState.position.latitude,
+        longitude: locationState.position.longitude,
       });
       setFacilityResults(data?.recommendations || []);
       setFacilityStatus(data?.status || 'idle');
@@ -286,22 +566,41 @@ function UserPortal() {
   };
 
   const currentGuide = useMemo(() => recyclingGuide[selectedMaterial] || recyclingGuide.Other, [selectedMaterial]);
+  const hasVerifiedActivity = dashboardMetrics.totalVerifiedWeight > 0;
 
   return (
-    <PortalLayout title="Welcome back" subtitle="Track demo activity, scan material, and understand local waste handling guidance." isCollector={false}>
+    <PortalLayout title="Welcome back" subtitle="Track your recycling journey, discover local collection points, and monitor your environmental impact." isCollector={false}>
       <div className="dashboard-grid">
         <div className="card wide-card">
           <div className="section-header">
-            <h2>Welcome</h2>
-            <span className="mini-tag">Demo usage</span>
+            <h2>Impact overview</h2>
+            <span className="mini-tag">Verified activity</span>
           </div>
           <div className="stat-grid">
-            {demoStats.map((stat) => (
-              <div key={stat.label} className={`stat-box ${stat.tone}`}>
-                <strong>{stat.value}</strong>
-                <span>{stat.label}</span>
-              </div>
-            ))}
+            <div className="stat-box green">
+              <strong>{dashboardMetrics.totalSubmissions}</strong>
+              <span>Total submissions</span>
+            </div>
+            <div className="stat-box blue">
+              <strong>{dashboardMetrics.totalVerifiedWeight.toFixed(1)} kg</strong>
+              <span>Total waste collected</span>
+            </div>
+            <div className="stat-box navy">
+              <strong>{dashboardMetrics.totalEcoPoints}</strong>
+              <span>Eco-points</span>
+            </div>
+            <div className="stat-box green">
+              <strong>{dashboardMetrics.co2Avoided.toFixed(1)} kg</strong>
+              <span>CO₂ emissions avoided</span>
+            </div>
+            <div className="stat-box blue">
+              <strong>{dashboardMetrics.achievements.length}</strong>
+              <span>Achievements</span>
+            </div>
+            <div className="stat-box navy">
+              <strong>{Object.keys(dashboardMetrics.materialBreakdown).length}</strong>
+              <span>Material groups</span>
+            </div>
           </div>
           <div className="quick-actions">
             <button className="action-card" onClick={() => document.getElementById('scan-upload')?.click()}>
@@ -318,15 +617,21 @@ function UserPortal() {
 
         <div className="card">
           <div className="section-header">
-            <h2>Recent demo activity</h2>
-            <span className="mini-tag">Local only</span>
+            <h2>Recent activity</h2>
+            <span className="mini-tag">Live updates</span>
           </div>
-          <ul className="activity-list">
-            <li><span className="dot green" /> Material scan demo completed</li>
-            <li><span className="dot blue" /> Collection recommendation check run</li>
-            <li><span className="dot navy" /> DIY reuse preview reviewed</li>
-          </ul>
-          <p className="small-note">These are sample or browser-stored demo records and are not verified JijiGreen collection events.</p>
+          {dashboardRecords.length === 0 ? (
+            <div className="empty-state">
+              <TreePine size={18} />
+              <p>You haven&apos;t started your recycling journey yet. Submit your first recyclable item and start making an impact!</p>
+            </div>
+          ) : (
+            <ul className="activity-list">
+              {dashboardRecords.slice(0, 5).map((record) => (
+                <li key={record.id}><span className={`dot ${record.verificationDecision === 'accepted' ? 'green' : 'navy'}`} /> {record.confirmedMaterial || record.predictedMaterial} • {Number(record.weightKg || 0).toFixed(1)} kg • {record.verificationDecision}</li>
+              ))}
+            </ul>
+          )}
         </div>
       </div>
 
@@ -347,10 +652,6 @@ function UserPortal() {
             <div className="result-box">
               <div className="result-row"><strong>Predicted material:</strong> {scanner.result.material?.predicted_material || '—'}</div>
               <div className="result-row"><strong>Material confidence:</strong> {formatPercent(scanner.result.material?.confidence_percent)}</div>
-              <div className="result-row"><strong>Second-best material:</strong> {scanner.result.material?.second_best_material || '—'}</div>
-              <div className="result-row"><strong>Confidence margin:</strong> {formatPercent(scanner.result.material?.confidence_margin_percent)}</div>
-              <div className="result-row"><strong>Prediction status:</strong> {scanner.result.material?.prediction_status || '—'}</div>
-              <div className="result-row"><strong>Review reasons:</strong> {scanner.result.material?.review_reasons?.length ? scanner.result.material.review_reasons.join(', ') : 'None flagged'}</div>
               <div className="result-row"><strong>Brand prediction:</strong> {scanner.result.brand_recognition?.result?.predicted_brand || 'No brand result returned for this image'}</div>
               <div className="result-row"><strong>Brand confidence:</strong> {scanner.result.brand_recognition?.result ? formatPercent(scanner.result.brand_recognition.result.confidence_percent) : '—'}</div>
               <div className="notice-panel">
@@ -367,7 +668,6 @@ function UserPortal() {
             <button className="primary" onClick={handlePredict}><Sparkles size={16} /> Run analysis</button>
             <button className="secondary" onClick={() => setScanner({ file: null, preview: '', loading: false, result: null, error: '' })}><RefreshCw size={16} /> Reset</button>
           </div>
-          <div className="small-note">Supported formats: JPG/JPEG/PNG. Maximum size: 5 MB. The backend determines the confidence percentages.</div>
         </section>
 
         <section className="card">
@@ -390,6 +690,34 @@ function UserPortal() {
       <div className="panel-grid two-col">
         <section className="card">
           <div className="section-header">
+            <h2>Map & nearby collection points</h2>
+            <span className="mini-tag">Live location</span>
+          </div>
+          <div className="location-banner">
+            <div>
+              <strong>Location status:</strong> {locationState.status === 'live' ? 'Live GPS access' : locationState.status === 'loading' ? 'Checking device location...' : 'Demo fallback active'}
+            </div>
+            {locationState.error && <span className="location-hint">{locationState.error}</span>}
+          </div>
+          <div className="button-row">
+            <button className="primary" onClick={handleLocationRequest}><LocateFixed size={16} /> Use my location</button>
+            <button className="secondary" onClick={() => setLocationState({ status: 'demo', position: defaultLocation, error: 'Demo fallback location restored.' })}><Map size={16} /> Reset demo location</button>
+          </div>
+          <div className="map-filter-row">
+            <label>Material filter</label>
+            <select value={selectedMaterial} onChange={(e) => setSelectedMaterial(e.target.value)}>
+              {materialOptions.map((material) => <option key={material} value={material}>{material}</option>)}
+            </select>
+          </div>
+          <DemoMapPanel userLocation={locationState.position} selectedMaterial={selectedMaterial} />
+          <div className="nearest-panel">
+            <MapPinned size={16} />
+            {nearestCollectionPoint ? `Nearest collection point: ${nearestCollectionPoint.name} — ${formatDistance(nearestCollectionPoint.distanceMetres)} away` : 'No suitable collection point matched this filter.'}
+          </div>
+        </section>
+
+        <section className="card">
+          <div className="section-header">
             <h2>Collection-point recommendations</h2>
             <span className="mini-tag">Live backend</span>
           </div>
@@ -401,13 +729,8 @@ function UserPortal() {
               {conditionOptions.map((condition) => <option key={condition} value={condition}>{condition}</option>)}
             </select>
             <input type="number" min="0.1" step="0.1" value={quantity} onChange={(e) => setQuantity(Number(e.target.value))} placeholder="Quantity kg" />
-            <div className="coord-inputs">
-              <input type="number" step="0.000001" value={coords.latitude} onChange={(e) => setCoords({ ...coords, latitude: Number(e.target.value) })} placeholder="Latitude" />
-              <input type="number" step="0.000001" value={coords.longitude} onChange={(e) => setCoords({ ...coords, longitude: Number(e.target.value) })} placeholder="Longitude" />
-            </div>
           </div>
           <div className="button-row">
-            <button className="primary" onClick={handleLocationRequest}><MapPinned size={16} /> Use GPS</button>
             <button className="secondary" onClick={handleRecommendations}><ArrowRight size={16} /> Search facilities</button>
           </div>
           {serviceError && <div className="alert error">{serviceError}</div>}
@@ -443,42 +766,102 @@ function UserPortal() {
             </div>
           )}
         </section>
+      </div>
 
-        <section className="card">
+      <div className="panel-grid three-col">
+        <section className="card env-card">
           <div className="section-header">
-            <h2>DIY reuse projects</h2>
-            <span className="mini-tag">Needs review</span>
+            <h2>You helped save our environment!</h2>
+            <span className="mini-tag">Verified impact</span>
           </div>
-          <button className="primary small" onClick={() => fetchDIY(selectedMaterial)}><Recycle size={16} /> Load project suggestions</button>
-          {diyState.loading && <div className="loading-card"><RefreshCw className="spin" size={16} /> Loading reuse suggestions...</div>}
-          {diyState.error && <div className="alert error">{diyState.error}</div>}
-          {!diyState.loading && diyState.data && diyState.data.recommendations?.length ? (
-            <div className="diy-list">
-              {diyState.data.recommendations.map((item) => (
-                <div key={item.idea_id} className="facility-card">
-                  <strong>{item.title}</strong>
-                  <p>{item.description}</p>
-                  <div className="tiny-grid">
-                    <span>Difficulty: {item.difficulty}</span>
-                    <span>Duration: {item.estimated_time_minutes} min</span>
-                    <span>Materials: {item.materials_needed?.join(', ')}</span>
-                    <span>Verification: {item.verification_status}</span>
-                  </div>
-                  <div className="notice-panel"><CircleAlert size={16} /> Every project currently carries a needs_review status and should be treated as an unreviewed suggestion.</div>
-                  <div className="notice-panel"><ShieldCheck size={16} /> Safety warnings are preserved and must not be removed: {item.safety_warnings}</div>
-                  {item.tutorial_url && <a href={item.tutorial_url} target="_blank" rel="noreferrer">Tutorial link</a>}
-                  <p>{item.instructions}</p>
-                </div>
-              ))}
+          <div className="tree-panel">
+            <div className="tree-visual">
+              <TreePine size={48} />
             </div>
-          ) : !diyState.loading && diyState.data && !diyState.data.recommendations?.length ? (
-            <div className="empty-state">
-              <Trash2 size={18} />
-              <p>No current DIY project suggestions are available for this material.</p>
+            <div className="impact-values">
+              <strong>{hasVerifiedActivity ? `${dashboardMetrics.totalVerifiedWeight.toFixed(1)} kg recycled` : '0 kg recycled yet'}</strong>
+              <span>{hasVerifiedActivity ? `Estimated CO₂e avoided: ${dashboardMetrics.co2Avoided.toFixed(1)} kg` : 'Start your recycling journey and grow your impact tree.'}</span>
             </div>
-          ) : null}
+          </div>
+          <div className="progress-strip">
+            <div className="progress-fill" style={{ width: `${Math.min(100, (dashboardMetrics.totalVerifiedWeight / 20) * 100)}%` }} />
+          </div>
+          <div className="achievement-row">
+            {dashboardMetrics.achievements.length ? dashboardMetrics.achievements.map((item) => (
+              <span key={item} className="achievement-badge"><Award size={14} /> {item}</span>
+            )) : <span className="empty-achievement">No achievements yet</span>}
+          </div>
+        </section>
+
+        <section className="card env-card">
+          <div className="section-header">
+            <h2>Environmental impact</h2>
+            <span className="mini-tag">Material summary</span>
+          </div>
+          <div className="impact-list">
+            {Object.entries(dashboardMetrics.materialBreakdown).length === 0 ? (
+              <div className="empty-state compact"><Info size={18} /><p>No verified material totals yet.</p></div>
+            ) : Object.entries(dashboardMetrics.materialBreakdown).map(([material, weight]) => (
+              <div key={material} className="impact-row">
+                <span>{material}</span>
+                <strong>{Number(weight).toFixed(1)} kg</strong>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="card env-card">
+          <div className="section-header">
+            <h2>Learn about our environment</h2>
+            <span className="mini-tag">Awareness</span>
+          </div>
+          <div className="edu-grid">
+            {educationCards.map((card) => (
+              <div key={card.title} className="education-card">
+                <h3>{card.title}</h3>
+                <p>{card.description}</p>
+                <small>{card.fact}</small>
+                <strong>Action:</strong>
+                <span>{card.action}</span>
+              </div>
+            ))}
+          </div>
         </section>
       </div>
+
+      <section className="card">
+        <div className="section-header">
+          <h2>DIY reuse projects</h2>
+          <span className="mini-tag">Needs review</span>
+        </div>
+        <button className="primary small" onClick={() => fetchDIY(selectedMaterial)}><Recycle size={16} /> Load project suggestions</button>
+        {diyState.loading && <div className="loading-card"><RefreshCw className="spin" size={16} /> Loading reuse suggestions...</div>}
+        {diyState.error && <div className="alert error">{diyState.error}</div>}
+        {!diyState.loading && diyState.data && diyState.data.recommendations?.length ? (
+          <div className="diy-list">
+            {diyState.data.recommendations.map((item) => (
+              <div key={item.idea_id} className="facility-card">
+                <strong>{item.title}</strong>
+                <p>{item.description}</p>
+                <div className="tiny-grid">
+                  <span>Difficulty: {item.difficulty}</span>
+                  <span>Duration: {item.estimated_time_minutes} min</span>
+                  <span>Materials: {item.materials_needed?.join(', ')}</span>
+                  <span>Verification: {item.verification_status}</span>
+                </div>
+                <div className="notice-panel"><CircleAlert size={16} /> Every project currently carries a needs_review status and should be treated as an unreviewed suggestion.</div>
+                {item.tutorial_url && <a href={item.tutorial_url} target="_blank" rel="noreferrer">Tutorial link</a>}
+                <p>{item.instructions}</p>
+              </div>
+            ))}
+          </div>
+        ) : !diyState.loading && diyState.data && !diyState.data.recommendations?.length ? (
+          <div className="empty-state">
+            <Trash2 size={18} />
+            <p>No current DIY project suggestions are available for this material.</p>
+          </div>
+        ) : null}
+      </section>
 
       <section className="card">
         <div className="section-header">
@@ -515,13 +898,7 @@ function CollectorPortal() {
     decision: 'pending',
     source: '',
   });
-  const [records, setRecords] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(localStorageKey) || '[]');
-    } catch (error) {
-      return [];
-    }
-  });
+  const [records, setRecords] = useState(() => readDemoRecords());
 
   const handleAssessmentUpload = (event) => {
     const file = event.target.files?.[0];
@@ -566,7 +943,7 @@ function CollectorPortal() {
       predictedBrand: verification.brand || assessment.result?.brand_recognition?.result?.predicted_brand || 'Unassigned',
       confirmedMaterial,
       confirmedBrand,
-      weightKg: Number(verification.actualWeightKg || verification.weightKg || 0),
+      weightKg: Number(verification.actualWeightKg || 0),
       condition: verification.condition,
       notes: verification.notes,
       verificationDecision: verification.decision,
@@ -576,11 +953,17 @@ function CollectorPortal() {
       status: 'demo-only',
     };
 
-    const existing = JSON.parse(localStorage.getItem(localStorageKey) || '[]');
-    const updated = [nextRecord, ...existing].slice(0, 20);
+    const updated = [nextRecord, ...records].slice(0, 20);
     localStorage.setItem(localStorageKey, JSON.stringify(updated));
     setRecords(updated);
+    window.dispatchEvent(new CustomEvent('jiji-data-refresh'));
   };
+
+  useEffect(() => {
+    const sync = () => setRecords(readDemoRecords());
+    window.addEventListener('jiji-data-refresh', sync);
+    return () => window.removeEventListener('jiji-data-refresh', sync);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(localStorageKey, JSON.stringify(records));
@@ -596,7 +979,7 @@ function CollectorPortal() {
   }, [records]);
 
   return (
-    <PortalLayout title="Collector dashboard" subtitle="Assess waste, verify material and keep demo-only records separate from operational claims." isCollector>
+    <PortalLayout title="Collector dashboard" subtitle="Assess waste, verify actual collection details, and keep demo-only records separate from operational claims." isCollector>
       <div className="dashboard-grid">
         <div className="card wide-card">
           <div className="section-header">
@@ -703,7 +1086,7 @@ function CollectorPortal() {
           {records.length === 0 ? <div className="empty-state"><Warehouse size={18} /><p>No demo collection records yet.</p></div> : records.map((record) => (
             <div className="record-row" key={record.id}>
               <div><strong>{record.confirmedMaterial || record.predictedMaterial}</strong></div>
-              <div>{record.weightKg} kg</div>
+              <div>{Number(record.weightKg || 0).toFixed(1)} kg</div>
               <div>{record.confirmedBrand || 'No confirmed brand'}</div>
               <div>{new Date(record.createdAt).toLocaleDateString()}</div>
               <div>{record.verificationDecision}</div>

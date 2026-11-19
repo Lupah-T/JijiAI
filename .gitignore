@@ -1,0 +1,46 @@
+# OS/editor
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Node/frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.log
+
+# Local config/secrets
+.env
+.env.*
+*.pem
+
+# Large generated/local project artifacts
+jijiAI/
+dataset/
+data/
+models/
+.backup/
+experiments/brand_recognition/models/
+experiments/brand_recognition/dataset/
+*.keras
+*.h5
+*.zip
+*.tar
+*.gz
+*.sqlite3
