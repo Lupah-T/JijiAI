@@ -1,0 +1,1 @@
+point_id,name,location,latitude,longitude,point_type,accepted_materials,accepted_waste_conditions,minimum_quantity_kg,maximum_quantity_kg,opening_hours,access_type,accepts_dropoff,is_active,capacity_kg,current_load_kg,contact,verification_status,last_verified_at,source_url,notes

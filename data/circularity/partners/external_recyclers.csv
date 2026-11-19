@@ -1,0 +1,1 @@
+facility_id,name,location,latitude,longitude,facility_type,accepted_materials,accepted_waste_conditions,minimum_quantity_kg,maximum_quantity_kg,buys_waste,accepts_dropoff,collection_available,opening_hours,access_type,is_active,contact,website,verification_status,last_verified_at,source_url,notes

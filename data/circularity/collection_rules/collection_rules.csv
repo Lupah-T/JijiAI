@@ -1,0 +1,1 @@
+rule_id,partner_id,material,item_grade,minimum_quantity_kg,maximum_quantity_kg,accepts_mixed_material,requires_cleaning,collection_available,collection_fee,verification_status,last_verified_at,notes
